@@ -129,8 +129,7 @@ if [ "$c" == "Y" ]; then
   git clone "https://github.com/DennisPirotta/template.git"
 
   # move new template to docroot
-  mv template/index.html .
-  mv template/done.svg .
+  mv template/* .
 
   # delete cloned files
   rm -rf template
