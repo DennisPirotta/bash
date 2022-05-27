@@ -1,0 +1,141 @@
+#!/bin/bash
+
+# check for privileges
+if [[ $UID != 0 ]]; then
+  echo "$(tput setaf 2)Please run this script with sudo:"
+  echo "sudo $0 $*$(tput setaf 7)"
+  exit 1
+fi
+
+# Ask for confirmation
+read -p "Do you want to install and configure glassfish? [Y/n] " res
+if [ "$res" != "Y" ]; then
+  echo "$(tput setaf 1)Installation aborted$(tput setaf 7)"
+  exit
+fi
+
+# check if glassfish is already installed
+dir=/opt/glassfish4
+if [ -d "$dir" ]; then
+  read -p "An existing installation is already on this system, reinstall? [Y/n] " d
+  if [ "$d" == "Y" ]; then
+    rm -rf /opt/glassfish4
+  else
+    echo "$(tput setaf 1)Installation aborted$(tput setaf 7)"
+    exit
+  fi
+fi
+
+# check if java is installed
+if ! command -v java -version &>/dev/null; then
+  read -p "$(tput setaf 4)Java could not be found, install OpenJDK-8? [Y/n]: $(tput setaf 7)" j
+  if [ "$j" == "Y" ]; then
+    apt install openjdk-8-jre-headless
+  else
+    echo "$(tput setaf 1)Installation aborted$(tput setaf 7)"
+    exit
+  fi
+fi
+echo "$(tput setaf 3)Java is installed$(tput setaf 7)"
+
+# move to /opt
+cd /opt || exit
+
+# check if glassfish package is already downloaded or download it
+file=/opt/glassfish-4.1.2-web.zip
+if ! [ -f "$file" ]; then
+  echo "$(tput setaf 4)downloading Glassfish files$(tput setaf 7)"
+  wget "https://download.java.net/glassfish/4.1.2/release/glassfish-4.1.2-web.zip"
+  echo "$(tput setaf 3) download completed$(tput setaf 7)"
+fi
+
+#check if unzip is installed
+if ! command -v unzip glassfish-4.1.2-web.zip &>/dev/null; then
+  read -p "$(tput setaf 4)Unzip could not be found, install Unzip? [Y/n]: $(tput setaf 7)" z
+  if [ "$z" == "Y" ]; then
+    apt install unzip
+  else
+    echo "$(tput setaf 3)Installation aborted$(tput setaf 7)"
+    exit
+  fi
+fi
+echo "$(tput setaf 3)Unzip is installed$(tput setaf 7)"
+
+#unzip glassfish
+echo "$(tput setaf 4)preparing to unzip glassfish$(tput setaf 7)"
+unzip glassfish-4.1.2-web.zip
+echo "$(tput setaf 3)Glassfish unzip completed$(tput setaf 7)"
+
+#delete zip
+rm glassfish-4.1.2-web.zip
+echo "$(tput setaf 3)cleaning installation files$(tput setaf 7)"
+
+# start default domain
+if ! glassfish4/bin/asadmin start-domain; then
+  # shellcheck disable=SC2046
+  kill -9 $(lsof -t -i:4848)
+  echo -e "$(tput setaf 2)Killing old installation$(tput setaf 7)"
+  glassfish4/bin/asadmin start-domain
+fi
+
+# indication
+
+echo "$(tput setaf 3)Preparing Glassfish configuration$(tput setaf 7)"
+echo -e "$(tput setaf 4)Username: admin \nPassword: <empty>$(tput setaf 7)"
+
+# enable secure admin
+
+while : ; do
+  while ! glassfish4/bin/asadmin change-admin-password; do
+    glassfish4/bin/asadmin change-admin-password
+  done
+  if glassfish4/bin/asadmin enable-secure-admin; then
+    break
+    else echo -e "$(tput setaf 2)Please check the admin password [ must not be empty ]$(tput setaf 7)"
+  fi
+done
+
+# reload domain
+glassfish4/bin/asadmin stop-domain
+if ! glassfish4/bin/asadmin start-domain; then
+  # shellcheck disable=SC2046
+  kill -9 $(lsof -t -i:4848)
+  echo -e "$(tput setaf 2)Killing old installation$(tput setaf 7)"
+  glassfish4/bin/asadmin start-domain
+fi
+
+# ask for continuing
+read -p "Do you want to install default configuration [Y/n]: " c
+if [ "$c" == "Y" ]; then
+
+
+  if ! command -v git --version &>/dev/null; then
+    read -p "$(tput setaf 4)Git is not installed, install Git? [Y/n]: $(tput setaf 7)" j
+    if [ "$j" == "Y" ]; then
+      apt install git
+    else
+      echo "$(tput setaf 1)Configuration aborted$(tput setaf 7)"
+      exit
+    fi
+  fi
+
+  # continuing setup
+  cd /opt/glassfish4/glassfish/domains/domain1/docroot || exit
+
+  # delete old index file
+  rm -rf index.html
+
+  # clone template repository
+  git clone "https://github.com/DennisPirotta/template.git"
+
+  # move new template to docroot
+  mv template/index.html .
+  mv template/done.svg .
+
+  # delete cloned files
+  rm -rf template
+
+else
+  echo "$(tput setaf 3)installed$(tput setaf 7)"
+  exit
+fi
